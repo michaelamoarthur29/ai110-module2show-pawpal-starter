@@ -16,11 +16,20 @@ Test plan — five core behaviors, each with its happy path and its edges:
                    completions, month ends and leap years, an unowned task.
 """
 
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from pawpal_system import Owner, Pet, Scheduler, Task
+# Running this file directly puts tests/ on sys.path, not the project root, so
+# pawpal_system would not be importable. Under pytest the root conftest.py
+# already handles it; this makes `python tests/test_pawpal.py` work too.
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from pawpal_system import Owner, Pet, Scheduler, Task  # noqa: E402
 
 TODAY = date(2026, 9, 16)
 
@@ -552,3 +561,9 @@ def test_negative_duration_is_rejected():
     """A negative duration would make end_time() precede the start."""
     with pytest.raises(ValueError):
         make_task(duration=-10)
+
+
+if __name__ == "__main__":
+    # Let `python tests/test_pawpal.py` run the suite and print results, rather
+    # than importing the file and exiting silently with no tests executed.
+    sys.exit(pytest.main([__file__, "-v"]))

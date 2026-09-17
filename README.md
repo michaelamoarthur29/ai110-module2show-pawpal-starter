@@ -240,8 +240,18 @@ python -m pytest -q
 python -m pytest --cov
 ```
 
-A plain `pytest` works too — the root `conftest.py` puts the project directory
-on `sys.path`, so `pawpal_system` imports either way.
+Three other ways to run it, all equivalent:
+
+```bash
+pytest                          # bare pytest, via the root conftest.py
+python tests/test_pawpal.py     # run the file directly, verbose output
+.venv/bin/python -m pytest      # without activating the venv first
+```
+
+The test file works standalone because it adds the project root to `sys.path`
+itself and calls `pytest.main()` from a `__main__` block — otherwise running it
+directly would fail to import `pawpal_system` and then exit silently without
+executing a single test.
 
 ### What the tests cover
 
