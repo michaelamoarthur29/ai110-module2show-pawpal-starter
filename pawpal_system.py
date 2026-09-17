@@ -44,6 +44,10 @@ class Task:
         """Mark this task as done."""
         self.completed = True
 
+    def mark_incomplete(self) -> None:
+        """Mark this task as not done again."""
+        self.completed = False
+
     def end_time(self) -> datetime:
         """Return when this task finishes (start time plus its duration)."""
         return self.date_time + timedelta(minutes=self.duration_minutes)

@@ -42,6 +42,25 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## 🧱 Project structure
+
+| File | Role |
+|------|------|
+| `pawpal_system.py` | Logic layer — `Owner`, `Pet`, `Task`, `Scheduler`. No UI code. |
+| `app.py` | Streamlit UI. Holds no scheduling logic; every button calls a method on the logic layer. |
+| `main.py` | Terminal demo of the logic layer. |
+| `tests/test_pawpal.py` | Pytest suite for the logic layer. |
+| `diagrams/uml.mmd` | Class diagram, kept in sync with the code. |
+
+The UI keeps its `Owner` in `st.session_state`. Streamlit re-runs the whole
+script on every interaction, so an `Owner` built as a plain local would be
+rebuilt empty each time; storing it in session state keeps one object — and
+every pet and task added to it — alive across re-runs.
+
+```bash
+streamlit run app.py
+```
+
 ## 🖥️ Sample Output
 
 Running the demo script exercises the whole logic layer in `pawpal_system.py`:

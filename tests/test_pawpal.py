@@ -30,6 +30,16 @@ def test_mark_complete_changes_status():
     assert task.completed is True
 
 
+def test_mark_incomplete_undoes_completion():
+    """mark_incomplete() puts a finished task back to not-done."""
+    task = make_task()
+    task.mark_complete()
+
+    task.mark_incomplete()
+
+    assert task.completed is False
+
+
 def test_adding_a_task_increases_pet_task_count():
     """Adding a task to a Pet raises that pet's task count by one."""
     pet = Pet("Mochi", "dog", 3)
