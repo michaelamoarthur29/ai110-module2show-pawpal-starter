@@ -1,26 +1,65 @@
-# PawPal+ (Module 2 Project)
+# 🐾 PawPal+
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+A pet care planning assistant for busy owners. PawPal+ tracks care tasks across
+all of your pets, orders them by time or priority, warns you when two tasks
+collide, and rolls repeating tasks forward on its own.
 
-## Scenario
+Built as a Streamlit app over a pure-Python logic layer, with 44 tests.
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+## The problem
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
+A busy pet owner needs help staying consistent with pet care:
 
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
+- Track care tasks — walks, feeding, meds, enrichment, grooming, vet visits
+- Respect real constraints — how long each task takes, how urgent it is
+- Produce a daily plan, and say when that plan does not actually fit
 
-## What you will build
+## ✨ Features
 
-Your final app should:
+**Scheduling**
 
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+- **Chronological ordering** — `Scheduler.sort_by_time()` puts tasks in real
+  time order across every pet and every day.
+- **Priority ordering** — `Scheduler.get_sorted_tasks()` sorts high → medium →
+  low, breaking ties by start time.
+- **Day planning** — `Scheduler.get_daily_tasks(day)` gives one day's tasks in
+  time order.
+
+**Filtering**
+
+- **By pet** — `Scheduler.filter_by_pet(name)`.
+- **By completion status** — `Scheduler.filter_by_status(completed)`.
+- **All at once** — `Scheduler.filter_tasks(pet_name, completed, day)`, where
+  any filter left as `None` is ignored.
+
+**Conflict warnings**
+
+- **Overlapping durations, not just equal start times** — a 30-minute walk at
+  08:00 is flagged against 08:15 medication, because every task carries a
+  duration and therefore a real end time.
+- **Across pets** — you cannot walk the dog and medicate the cat at once.
+- **Warnings, never exceptions** — `Scheduler.conflict_warnings()` returns
+  readable strings. PawPal+ tells you the day does not fit and leaves the fix
+  to you.
+- **Correct across midnight** — a 23:50 walk overlapping 00:10 meds is reported
+  on the day the overlap happens.
+
+**Recurring tasks**
+
+- **Automatic on completion** — tick off a daily task and tomorrow's copy
+  appears (`Scheduler.mark_task_complete()`).
+- **Bulk expansion** — `Scheduler.create_recurring_tasks(until)` fills a date
+  range ahead of time.
+- **No duplicates** — both paths check before creating, so either is safe to
+  run twice.
+- **Correct date arithmetic** — `timedelta` handles month ends and leap days:
+  Jan 31 + 1 day is Feb 1.
+
+**Validation**
+
+- Priority, frequency, and duration are checked in `Task.__post_init__`, so an
+  invalid task cannot exist. The UI dropdowns are built from the same
+  constants, so the two layers cannot drift apart.
 
 ## Getting started
 
@@ -32,15 +71,13 @@ source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Suggested workflow
+### Run it
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
+```bash
+streamlit run app.py   # the full UI
+python main.py         # terminal demo of the logic layer
+python -m pytest       # the test suite
+```
 
 ## 🧱 Project structure
 
@@ -50,15 +87,61 @@ pip install -r requirements.txt
 | `app.py` | Streamlit UI. Holds no scheduling logic; every button calls a method on the logic layer. |
 | `main.py` | Terminal demo of the logic layer. |
 | `tests/test_pawpal.py` | Pytest suite for the logic layer. |
-| `diagrams/uml.mmd` | Class diagram, kept in sync with the code. |
+| `conftest.py` | Puts the project root on `sys.path` so bare `pytest` works. |
+| `diagrams/uml_final.mmd` | Final class diagram, verified against the code. |
+| `diagrams/uml.mmd` | Same diagram under the original filename. |
+| `reflection.md` | Design choices, tradeoffs, and AI collaboration notes. |
 
 The UI keeps its `Owner` in `st.session_state`. Streamlit re-runs the whole
 script on every interaction, so an `Owner` built as a plain local would be
 rebuilt empty each time; storing it in session state keeps one object — and
 every pet and task added to it — alive across re-runs.
 
-```bash
-streamlit run app.py
+### Architecture
+
+The full class diagram lives in [`diagrams/uml_final.mmd`](diagrams/uml_final.mmd).
+`Scheduler` keeps no task list of its own — it holds an `Owner` and reads
+everything through `owner.get_all_tasks()`, so a task added with
+`Pet.add_task()` is visible to the schedule immediately and the two can never
+drift out of sync.
+
+```mermaid
+classDiagram
+    direction LR
+    class Owner {
+        +str name
+        +list~Pet~ pets
+        +add_pet(pet) Pet
+        +get_all_tasks() list~Task~
+    }
+    class Pet {
+        +str name
+        +str species
+        +int age
+        +list~Task~ tasks
+        +add_task(task) Task
+    }
+    class Task {
+        +str title
+        +datetime date_time
+        +int duration_minutes
+        +str priority
+        +bool completed
+        +str frequency
+        +end_time() datetime
+        +next_occurrence() Task
+        +overlaps(other) bool
+    }
+    class Scheduler {
+        +Owner owner
+        +sort_by_time() list~Task~
+        +filter_tasks(...) list~Task~
+        +conflict_warnings(day) list~str~
+        +mark_task_complete(task) Task
+    }
+    Owner "1" *-- "0..*" Pet : owns
+    Pet "1" *-- "0..*" Task : has
+    Scheduler "1" --> "1" Owner : reads tasks through
 ```
 
 ## 🖥️ Sample Output
@@ -279,12 +362,126 @@ the bulk expansion is safe.
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+### What the UI lets you do
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+| Area | Actions available |
+|------|-------------------|
+| **Owner** | Rename the owner. One `Owner` object lives in `st.session_state` for the whole session. |
+| **Pets** | Add a pet (name, species, age). A table lists every pet with its task count. "Load demo data" fills two pets and five tasks so you can look around immediately. |
+| **Tasks** | Add a task to a chosen pet: title, type, date, start time, duration, priority, and how often it repeats. The priority and repeat dropdowns are built from the logic layer's own `PRIORITIES` and `FREQUENCIES`, so the UI cannot submit a value `Task` would reject. |
+| **Schedule** | Pick any date. Filter by pet and by completion status. Tick tasks off. Three metrics show tasks today, how many are done, and total minutes of care. |
+| **Conflicts** | A banner above the schedule names every overlap on the day, and each clashing row is marked inline. |
+| **Other views** | Three expanders: all tasks by priority, all tasks by time, and outstanding tasks only. |
+| **Recurring** | Roll every daily and weekly task forward through a date you choose. Safe to run twice. |
+
+### An example workflow
+
+1. Run `streamlit run app.py` and open the local URL. The app starts empty, so
+   click **Load demo data** to get Mochi (dog, 3) and Biscuit (cat, 7).
+2. **Add a pet** — type "Pip", choose *rabbit*, age 2, click **Add pet**. This
+   calls `Owner.add_pet()`, and the pet table redraws with three rows.
+3. **Schedule a task** — pick *Pip*, title it "Evening hay", set 19:00 for 10
+   minutes at *medium* priority, and choose **daily** under Repeats. This calls
+   `Pet.add_task()`.
+4. **View today's schedule** — the day view lists every task in time order, each
+   with its window (`08:00–08:30`), duration, pet, type, and priority.
+5. **Notice the conflict** — the demo data puts Mochi's breakfast at 08:45 and
+   Biscuit's at 08:50, both 10 minutes. A warning banner names the overlap and
+   both rows are flagged with ⚠️.
+6. **Filter** — set *Show pet* to **Biscuit** and *Show tasks* to
+   **Outstanding**. The list narrows to Biscuit's unfinished tasks via
+   `Scheduler.filter_tasks()`.
+7. **Tick off the morning walk** — because it repeats daily, a toast confirms
+   the next one is scheduled for tomorrow. Change the date to tomorrow and it
+   is there.
+
+### Scheduler behaviors the demo shows
+
+- **Sorting by time** — tasks are added out of chronological order and still
+  display earliest-first (`Scheduler.sort_by_time()`).
+- **Sorting by priority** — the "All tasks by priority" expander puts high
+  before medium before low, ties broken by start time.
+- **Filtering** — by pet, by completion status, and by day, combined in one
+  call to `Scheduler.filter_tasks()`.
+- **Conflict warnings** — overlapping *durations*, not just identical start
+  times, reported across different pets. The scheduler warns and never
+  reschedules on its own: only the owner knows whether two pets can eat at
+  once.
+- **Daily recurrence** — completing a repeating task queues its next
+  occurrence automatically (`Scheduler.mark_task_complete()`), and bulk
+  expansion through a chosen date is available separately.
+
+### Sample CLI output
+
+The same logic layer, driven from the terminal with `python main.py`:
+
+```
+PawPal+ scheduling demo
+
+Jordan's pets
+==============================================================
+  Mochi (dog, 3)  -  4 tasks
+  Biscuit (cat, 7)  -  3 tasks
+
+Sorted by time — Scheduler.sort_by_time()
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
+
+Sorted by priority — Scheduler.get_sorted_tasks()
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
+
+Filtered to Biscuit — Scheduler.filter_by_pet('Biscuit')
+==============================================================
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
+
+Outstanding tasks — Scheduler.filter_by_status(completed=False)
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
+
+Combined — Mochi's outstanding tasks today
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+
+Conflict check — Scheduler.conflict_warnings()
+==============================================================
+  ⚠️  Breakfast (Mochi) 08:45–08:55 overlaps Breakfast (Biscuit) 08:45–08:55
+
+  1 conflict(s) found. Nothing crashed — these are warnings.
+
+Completing a daily task — Scheduler.mark_task_complete()
+==============================================================
+  Before: 7 tasks total
+  Completed: Morning walk on Wed 16 Sep
+  Auto-created: Morning walk on Thu 17 Sep (completed=False)
+  After:  8 tasks total
+
+Tomorrow's schedule
+==============================================================
+  [ ] Thu 08:00–08:30  Morning walk     Mochi     high    (daily)
+```
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->

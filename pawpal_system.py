@@ -201,15 +201,15 @@ class Scheduler:
         tasks = self.get_all_tasks()
         if pet_name is not None:
             names = {pet.name for pet in self.owner.get_pets() if pet.name == pet_name}
-            tasks = [t for t in tasks if self._pet_name(t) in names]
+            tasks = [t for t in tasks if self.pet_name_for(t) in names]
         if completed is not None:
             tasks = [t for t in tasks if t.completed == completed]
         if day is not None:
             tasks = [t for t in tasks if t.date_time.date() == day]
         return self.sort_by_time(tasks)
 
-    def _pet_name(self, task: Task) -> str | None:
-        """Return the name of the pet a task belongs to, or None."""
+    def pet_name_for(self, task: Task) -> str | None:
+        """Return the name of the pet a task belongs to, or None if unowned."""
         pet = self.pet_for(task)
         return pet.name if pet else None
 
@@ -255,9 +255,9 @@ class Scheduler:
         warnings = []
         for first, second in self.detect_conflicts(day):
             warnings.append(
-                f"⚠️  {first.title} ({self._pet_name(first)}) "
+                f"⚠️  {first.title} ({self.pet_name_for(first)}) "
                 f"{first.date_time:%H:%M}–{first.end_time():%H:%M} overlaps "
-                f"{second.title} ({self._pet_name(second)}) "
+                f"{second.title} ({self.pet_name_for(second)}) "
                 f"{second.date_time:%H:%M}–{second.end_time():%H:%M}"
             )
         return warnings

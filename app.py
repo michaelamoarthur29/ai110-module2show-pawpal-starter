@@ -149,12 +149,50 @@ if not scheduler.get_all_tasks():
     st.stop()
 
 view_day = st.date_input("Plan for", value=date.today(), key="view_day")
-daily_tasks = scheduler.get_daily_tasks(view_day)
+
+# Scheduler.filter_tasks() does the narrowing; the UI only picks the arguments.
+col_pet, col_status = st.columns(2)
+pet_choice = col_pet.selectbox("Show pet", ["All pets"] + [pet.name for pet in pets])
+status_choice = col_status.selectbox("Show tasks", ["All", "Outstanding", "Completed"])
+
+status_filter = {"All": None, "Outstanding": False, "Completed": True}[status_choice]
+daily_tasks = scheduler.filter_tasks(
+    pet_name=None if pet_choice == "All pets" else pet_choice,
+    completed=status_filter,
+    day=view_day,
+)
+
+# Conflicts come first: a pet owner needs to know the day doesn't fit before
+# they start working through it, not after they scroll past the clash.
+warnings = scheduler.conflict_warnings(view_day)
+conflicted = {id(task) for pair in scheduler.detect_conflicts(view_day) for task in pair}
+
+if warnings:
+    st.warning(f"**{len(warnings)} scheduling conflict(s) on this day**")
+    for warning in warnings:
+        st.markdown(f"- {warning.removeprefix('⚠️  ')}")
+    st.caption(
+        "PawPal+ flags overlaps but never reschedules for you — only you know "
+        "whether two pets can eat at once."
+    )
+else:
+    st.success("No conflicts — the day fits together.")
+
+# Progress for the day, so the owner can see how much is left.
+day_tasks = scheduler.get_daily_tasks(view_day)
+if day_tasks:
+    done_count = len([t for t in day_tasks if t.completed])
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Tasks today", len(day_tasks))
+    col_b.metric("Completed", done_count)
+    col_c.metric("Minutes of care", sum(t.duration_minutes for t in day_tasks))
 
 st.markdown(f"### {view_day:%A, %B %d}")
+if pet_choice != "All pets" or status_choice != "All":
+    st.caption(f"Filtered to **{pet_choice}** · **{status_choice.lower()}** tasks.")
 
 if not daily_tasks:
-    st.write("Nothing scheduled for this day.")
+    st.write("Nothing scheduled matches this view.")
 else:
     for task in daily_tasks:
         pet = scheduler.pet_for(task)
@@ -181,43 +219,49 @@ else:
         window = f"{task.date_time:%H:%M}–{task.end_time():%H:%M}"
         label = f"~~{task.title}~~" if task.completed else f"**{task.title}**"
         repeats = f" · repeats {task.frequency}" if task.is_recurring() else ""
+        # Mark the specific rows that clash, so the warning above points at
+        # something the owner can actually find in the list.
+        clash = " ⚠️" if id(task) in conflicted else ""
         cols[1].markdown(
-            f"{label} — {window} ({task.duration_minutes} min)  \n"
+            f"{label}{clash} — {window} ({task.duration_minutes} min)  \n"
             f"<small>{pet_name} · {task.task_type} · {task.priority} priority{repeats}</small>",
             unsafe_allow_html=True,
         )
 
-conflicts = scheduler.detect_conflicts(view_day)
-if conflicts:
-    st.warning(f"{len(conflicts)} scheduling conflict(s) on this day:")
-    for first, second in conflicts:
-        first_pet = scheduler.pet_for(first)
-        second_pet = scheduler.pet_for(second)
-        st.markdown(
-            f"- **{first.title}** ({first_pet.name}) "
-            f"{first.date_time:%H:%M}–{first.end_time():%H:%M} overlaps "
-            f"**{second.title}** ({second_pet.name}) "
-            f"{second.date_time:%H:%M}–{second.end_time():%H:%M}"
-        )
-else:
-    st.success("No conflicts — the day fits together.")
+
+# --- Other views -----------------------------------------------------------
 
 
-# --- Everything by priority ------------------------------------------------
+def task_rows(tasks: list[Task]) -> list[dict]:
+    """Return tasks as table rows for st.table."""
+    return [
+        {
+            "When": f"{task.date_time:%a %d %b %H:%M}",
+            "Task": task.title,
+            "Pet": scheduler.pet_name_for(task) or "—",
+            "Type": task.task_type,
+            "Priority": task.priority,
+            "Repeats": task.frequency if task.is_recurring() else "—",
+            "Done": "✓" if task.completed else "",
+        }
+        for task in tasks
+    ]
 
-with st.expander("All tasks by priority"):
-    st.table(
-        [
-            {
-                "Priority": task.priority,
-                "When": f"{task.date_time:%a %d %b %H:%M}",
-                "Task": task.title,
-                "Pet": (scheduler.pet_for(task) or Pet("?", "?", 0)).name,
-                "Done": "✓" if task.completed else "",
-            }
-            for task in scheduler.get_sorted_tasks()
-        ]
-    )
+
+with st.expander("All tasks by priority — Scheduler.get_sorted_tasks()"):
+    st.caption("High priority first; tasks of equal priority fall back to start time.")
+    st.table(task_rows(scheduler.get_sorted_tasks()))
+
+with st.expander("All tasks by time — Scheduler.sort_by_time()"):
+    st.caption("Every task across every pet, earliest first, spanning all days.")
+    st.table(task_rows(scheduler.sort_by_time()))
+
+with st.expander("Outstanding tasks — Scheduler.filter_by_status()"):
+    outstanding = scheduler.filter_by_status(completed=False)
+    if outstanding:
+        st.table(task_rows(outstanding))
+    else:
+        st.success("Everything is done. 🎉")
 
 
 # --- Recurring tasks -------------------------------------------------------
