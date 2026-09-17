@@ -56,6 +56,17 @@ class Task:
         """Return True if this task repeats on a schedule."""
         return self.frequency != "none"
 
+    def next_occurrence(self) -> Task | None:
+        """Return the next unfinished copy of this task, or None if it doesn't repeat.
+
+        timedelta does the date arithmetic, so month ends and leap days are
+        handled for free: Jan 31 + 1 day is Feb 1, not an invalid Jan 32.
+        """
+        if not self.is_recurring():
+            return None
+        step = timedelta(days=_REPEAT_DAYS[self.frequency])
+        return replace(self, date_time=self.date_time + step, completed=False)
+
     def overlaps(self, other: Task) -> bool:
         """Return True if this task's time range overlaps another's."""
         return self.date_time < other.end_time() and other.date_time < self.end_time()
@@ -148,25 +159,110 @@ class Scheduler:
                 return pet
         return None
 
+    # --- sorting ---
+
+    def sort_by_time(self, tasks: list[Task] | None = None) -> list[Task]:
+        """Return tasks in chronological order, earliest start first.
+
+        Defaults to every task the owner has. `date_time` is a real datetime,
+        so sorted() orders it directly — no "HH:MM" string parsing needed, and
+        tasks on different days can't interleave the way text sorting would.
+        """
+        tasks = self.get_all_tasks() if tasks is None else tasks
+        return sorted(tasks, key=lambda t: t.date_time)
+
     def get_sorted_tasks(self) -> list[Task]:
         """Return all tasks ordered by priority, then by start time."""
         return sorted(self.get_all_tasks(), key=lambda t: (t.priority_rank(), t.date_time))
+
+    # --- filtering ---
 
     def get_daily_tasks(self, day: date) -> list[Task]:
         """Return the tasks scheduled on the given day, in time order."""
         on_day = [t for t in self.get_all_tasks() if t.date_time.date() == day]
         return sorted(on_day, key=lambda t: (t.date_time, t.priority_rank()))
 
+    def filter_by_pet(self, pet_name: str) -> list[Task]:
+        """Return that pet's tasks in time order; empty if no pet has that name."""
+        matches = [pet for pet in self.owner.get_pets() if pet.name == pet_name]
+        return self.sort_by_time([task for pet in matches for task in pet.get_tasks()])
+
+    def filter_by_status(self, completed: bool) -> list[Task]:
+        """Return the finished tasks (completed=True) or the outstanding ones."""
+        return self.sort_by_time([t for t in self.get_all_tasks() if t.completed == completed])
+
+    def filter_tasks(
+        self,
+        pet_name: str | None = None,
+        completed: bool | None = None,
+        day: date | None = None,
+    ) -> list[Task]:
+        """Return tasks matching every filter given; a filter left as None is ignored."""
+        tasks = self.get_all_tasks()
+        if pet_name is not None:
+            names = {pet.name for pet in self.owner.get_pets() if pet.name == pet_name}
+            tasks = [t for t in tasks if self._pet_name(t) in names]
+        if completed is not None:
+            tasks = [t for t in tasks if t.completed == completed]
+        if day is not None:
+            tasks = [t for t in tasks if t.date_time.date() == day]
+        return self.sort_by_time(tasks)
+
+    def _pet_name(self, task: Task) -> str | None:
+        """Return the name of the pet a task belongs to, or None."""
+        pet = self.pet_for(task)
+        return pet.name if pet else None
+
+    # --- conflicts ---
+
     def detect_conflicts(self, day: date | None = None) -> list[tuple[Task, Task]]:
-        """Return pairs of unfinished tasks whose time ranges overlap."""
+        """Return pairs of unfinished tasks whose time ranges overlap.
+
+        Sorting by start time first means the inner loop can stop as soon as a
+        task starts after the current one ends — everything later starts later
+        still, so it can't overlap either.
+        """
         tasks = self.get_daily_tasks(day) if day else self.get_all_tasks()
-        pending = sorted((t for t in tasks if not t.completed), key=lambda t: t.date_time)
-        return [
-            (first, second)
-            for i, first in enumerate(pending)
-            for second in pending[i + 1 :]
-            if first.overlaps(second)
-        ]
+        pending = self.sort_by_time([t for t in tasks if not t.completed])
+
+        conflicts: list[tuple[Task, Task]] = []
+        for index, first in enumerate(pending):
+            for second in pending[index + 1 :]:
+                if second.date_time >= first.end_time():
+                    break
+                conflicts.append((first, second))
+        return conflicts
+
+    def conflict_warnings(self, day: date | None = None) -> list[str]:
+        """Return a readable warning line per conflict — never raises, empty if none."""
+        warnings = []
+        for first, second in self.detect_conflicts(day):
+            warnings.append(
+                f"⚠️  {first.title} ({self._pet_name(first)}) "
+                f"{first.date_time:%H:%M}–{first.end_time():%H:%M} overlaps "
+                f"{second.title} ({self._pet_name(second)}) "
+                f"{second.date_time:%H:%M}–{second.end_time():%H:%M}"
+            )
+        return warnings
+
+    # --- recurring tasks ---
+
+    def mark_task_complete(self, task: Task) -> Task | None:
+        """Mark a task done and queue its next occurrence if it repeats.
+
+        Returns the newly created follow-up task, or None when the task doesn't
+        repeat or its next occurrence is already on the schedule.
+        """
+        task.mark_complete()
+
+        follow_up = task.next_occurrence()
+        if follow_up is None:
+            return None
+
+        pet = self.pet_for(task)
+        if pet is None or pet.has_task(follow_up.title, follow_up.date_time):
+            return None
+        return pet.add_task(follow_up)
 
     def create_recurring_tasks(self, until: date) -> list[Task]:
         """Expand each recurring task into dated copies through `until` and attach them."""

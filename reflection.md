@@ -5,7 +5,19 @@
 **a. Initial design**
 
 - Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+- What classes did you include, and what responsibilities did you assign to each? 
+
+Three core actions a PawPal+ user should be able to perform are:
+
+1. **Add and manage pets** — An owner should be able to add a pet and store basic information such as the pet's name, species, age, and care needs.
+
+2. **Create and manage tasks** — An owner should be able to schedule tasks such as feedings, walks, medications, and veterinary appointments for a specific pet.
+
+3. **View an organized daily schedule** — The system should display upcoming pet-care tasks in a useful order based on factors such as time and priority so owners can easily see what needs to be completed. 
+
+I designed PawPal+ around four main classes: Owner, Pet, Task, and Scheduler. The Owner class represents the person using the system and keeps track of their pets. The Pet class stores information about each animal and the care tasks associated with it. The Task class represents individual responsibilities such as feeding, walking, medications, or appointments. Finally, the Scheduler class handles the algorithmic side of the application by organizing tasks, filtering them by date, detecting scheduling conflicts, and managing recurring tasks.
+
+I kept these responsibilities separate so that each class has one clear purpose. This should also make the system easier to test and expand when the Streamlit interface is added later.
 
 **b. Design changes**
 
@@ -23,8 +35,39 @@
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**The tradeoff: conflicts are detected as overlapping durations, but the
+scheduler only warns — it never reorders or refuses a task.**
+
+`Scheduler.detect_conflicts()` compares full time ranges, not just start times.
+Each `Task` carries `duration_minutes`, so `end_time()` gives a real interval and
+two tasks conflict when `first.date_time < second.end_time() and
+second.date_time < first.end_time()`. That catches a 30-minute walk at 08:00
+colliding with meds at 08:15, which an exact-start-time check would miss
+entirely. Back-to-back tasks are deliberately *not* conflicts: a task starting
+exactly when another ends is fine.
+
+What the scheduler does *not* do is act on that finding.
+`Scheduler.conflict_warnings()` returns a list of strings and
+`mark_task_complete()` will happily complete a conflicted task. Nothing raises.
+The owner is told "these two overlap" and decides what to do.
+
+This is reasonable here because the scheduler doesn't know enough to resolve
+the conflict correctly. Two pets needing breakfast at 08:45 might be a genuine
+problem, or they might share one kitchen and take 30 seconds each. Auto-shifting
+a medication dose to clear an overlap would be actively worse than leaving it
+alone — the constraint that matters (when the vet said to give the pill) lives
+outside the system. Warnings keep the human in the loop where the system's
+information runs out.
+
+Two known limits of the current approach:
+
+- Conflict detection is pairwise and `O(n²)` in the worst case, though sorting
+  by start time first lets the inner loop break early once a task starts after
+  the current one ends. For one owner's daily task list this is irrelevant; for
+  thousands of tasks an interval tree would be the right structure.
+- Unticking a completed recurring task does not remove the follow-up occurrence
+  that completing it created. Deleting it automatically risked destroying a task
+  the owner had since edited, so the follow-up stays and can be removed by hand.
 
 ---
 

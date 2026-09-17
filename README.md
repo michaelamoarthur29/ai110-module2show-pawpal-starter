@@ -70,64 +70,79 @@ python main.py
 ```
 
 ```
-PawPal+ daily plan
+PawPal+ scheduling demo
 
 Jordan's pets
-==========================================================
+==============================================================
   Mochi (dog, 3)  -  4 tasks
   Biscuit (cat, 7)  -  3 tasks
 
-Today's Schedule - Wednesday, September 16
-==========================================================
-  08:00 - Morning walk (30 min) [high, daily]
-      for Mochi - exercise
-  08:45 - Breakfast (10 min) [high]
-      for Mochi - feeding
-  08:50 - Breakfast (10 min) [high]
-      for Biscuit - feeding
-  09:00 - Thyroid meds (5 min) [high, daily]
-      for Biscuit - medication
-  14:00 - Puzzle feeder (20 min) [low]
-      for Mochi - enrichment
-  18:30 - Evening walk (30 min) [medium]
-      for Mochi - exercise
-  19:00 - Brushing (15 min) [medium, weekly]
-      for Biscuit - grooming
+Sorted by time — Scheduler.sort_by_time()
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
 
-All tasks by priority
-==========================================================
-  high    Wed 08:00  Morning walk (Mochi)
-  high    Wed 08:45  Breakfast (Mochi)
-  high    Wed 08:50  Breakfast (Biscuit)
-  high    Wed 09:00  Thyroid meds (Biscuit)
-  medium  Wed 18:30  Evening walk (Mochi)
-  medium  Wed 19:00  Brushing (Biscuit)
-  low     Wed 14:00  Puzzle feeder (Mochi)
+Sorted by priority — Scheduler.get_sorted_tasks()
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
 
-Scheduling conflicts
-==========================================================
-  ! Breakfast (Mochi) overlaps Breakfast (Biscuit)
-      08:45-08:55 vs 08:50-09:00
+Filtered to Biscuit — Scheduler.filter_by_pet('Biscuit')
+==============================================================
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
 
-Marking the morning walk complete
-==========================================================
-  08:00 - Morning walk (30 min) [high, daily] ✓
+Outstanding tasks — Scheduler.filter_by_status(completed=False)
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 08:45–08:55  Breakfast        Biscuit   high   
+  [ ] Wed 09:00–09:05  Thyroid meds     Biscuit   high    (daily)
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
+  [ ] Wed 19:00–19:15  Brushing         Biscuit   low     (weekly)
 
-Rolled 2 recurring tasks forward
-==========================================================
+Combined — Mochi's outstanding tasks today
+==============================================================
+  [ ] Wed 08:00–08:30  Morning walk     Mochi     high    (daily)
+  [ ] Wed 08:45–08:55  Breakfast        Mochi     high   
+  [ ] Wed 14:00–14:20  Puzzle feeder    Mochi     low    
+  [ ] Wed 18:30–19:00  Evening walk     Mochi     medium 
 
-Tomorrow's Schedule - Thursday, September 17
-==========================================================
-  08:00 - Morning walk (30 min) [high, daily]
-      for Mochi - exercise
-  09:00 - Thyroid meds (5 min) [high, daily]
-      for Biscuit - medication
+Conflict check — Scheduler.conflict_warnings()
+==============================================================
+  ⚠️  Breakfast (Mochi) 08:45–08:55 overlaps Breakfast (Biscuit) 08:45–08:55
+
+  1 conflict(s) found. Nothing crashed — these are warnings.
+
+Completing a daily task — Scheduler.mark_task_complete()
+==============================================================
+  Before: 7 tasks total
+  Completed: Morning walk on Wed 16 Sep
+  Auto-created: Morning walk on Thu 17 Sep (completed=False)
+  After:  8 tasks total
+
+Tomorrow's schedule
+==============================================================
+  [ ] Thu 08:00–08:30  Morning walk     Mochi     high    (daily)
 ```
 
-The two 10-minute breakfasts at 08:45 and 08:50 are deliberate — they show
-`detect_conflicts()` catching an overlap across two different pets. Only the
-two `daily` tasks roll into tomorrow; Biscuit's `weekly` brushing is not due
-again until next week.
+The demo deliberately adds tasks **out of chronological order** and gives Mochi
+and Biscuit breakfast at the **same 08:45 slot**, so sorting and conflict
+detection both have something real to do. Completing the daily morning walk
+auto-creates tomorrow's copy — that's `mark_task_complete()`, not the bulk
+expansion.
 
 ## 🧪 Testing PawPal+
 
@@ -146,23 +161,63 @@ Sample test output:
 platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0
 rootdir: /Users/mikeyamo-arthur/Documents/ai110-module2show-pawpal-starter
 plugins: anyio-4.11.0
-collected 14 items
+collected 31 items
 
-tests/test_pawpal.py ..............                                      [100%]
+tests/test_pawpal.py ...............................                     [100%]
 
-============================== 14 passed in 0.03s ==============================
+============================== 31 passed in 0.04s ==============================
 ```
 
 ## 📐 Smarter Scheduling
 
-| Feature | Method(s) | Notes |
-|---------|-----------|-------|
-| Task sorting | `Scheduler.get_sorted_tasks()` | Orders by priority (high → medium → low), then start time |
-| Filtering | `Scheduler.get_daily_tasks(day)` | Keeps only tasks on the requested date, in time order |
-| Conflict handling | `Scheduler.detect_conflicts(day=None)` | Returns pairs of unfinished tasks whose ranges overlap, across all pets; back-to-back tasks don't count |
-| Recurring tasks | `Scheduler.create_recurring_tasks(until)`, `Task.is_recurring()` | Expands `daily` / `weekly` tasks into dated copies through `until`; skips occurrences that already exist so re-running is safe |
-| Task duration | `Task.end_time()` | Start time plus `duration_minutes` — what makes conflict detection possible |
-| Reading pet data | `Owner.get_all_tasks()`, `Scheduler.pet_for(task)` | The scheduler holds an `Owner` and reads tasks through its pets, so there is one source of truth |
+### Sorting
+
+| Method | Behavior |
+|--------|----------|
+| `Scheduler.sort_by_time(tasks=None)` | Chronological order, earliest start first. Defaults to every task; pass a list to sort a subset. Because `Task.date_time` is a real `datetime`, `sorted()` orders it directly — no `"HH:MM"` string parsing, and tasks on different days can't interleave the way text sorting would. |
+| `Scheduler.get_sorted_tasks()` | Priority order (high → medium → low), ties broken by start time. Uses a tuple key, `(t.priority_rank(), t.date_time)`. |
+| `Task.priority_rank()` | Turns `"high"`/`"medium"`/`"low"` into `0`/`1`/`2` so priority sorts by urgency instead of alphabetically (which would give high, low, medium). |
+
+### Filtering
+
+| Method | Behavior |
+|--------|----------|
+| `Scheduler.filter_by_pet(pet_name)` | That pet's tasks in time order. An unknown name returns `[]` rather than raising. |
+| `Scheduler.filter_by_status(completed)` | `True` for finished tasks, `False` for outstanding ones. |
+| `Scheduler.get_daily_tasks(day)` | Tasks on one date, in time order. |
+| `Scheduler.filter_tasks(pet_name=None, completed=None, day=None)` | Combines all three. Any filter left as `None` is ignored, so `filter_tasks()` returns everything. |
+
+### Conflict detection
+
+| Method | Behavior |
+|--------|----------|
+| `Scheduler.detect_conflicts(day=None)` | Returns pairs of unfinished tasks whose time *ranges* overlap — not just identical start times. Works across pets: the owner can't walk the dog and medicate the cat at once. |
+| `Scheduler.conflict_warnings(day=None)` | The same findings as readable strings. **Never raises** — a day with no overlaps returns `[]`. |
+| `Task.overlaps(other)` | `self.date_time < other.end_time() and other.date_time < self.end_time()`. Back-to-back tasks are deliberately not conflicts. |
+
+Sorting by start time first lets the inner loop stop as soon as a task starts
+after the current one ends — everything later starts later still, so it can't
+overlap either.
+
+### Recurring tasks
+
+| Method | Behavior |
+|--------|----------|
+| `Task.next_occurrence()` | Returns the next copy of a repeating task (`None` if it doesn't repeat), advanced by `timedelta(days=1)` or `timedelta(days=7)`. `timedelta` handles month ends and leap days, so Jan 31 + 1 day is Feb 1. The original is left untouched. |
+| `Scheduler.mark_task_complete(task)` | Marks a task done **and automatically queues its next occurrence** if it's daily or weekly. Returns the new task, or `None` when there's nothing to create. |
+| `Scheduler.create_recurring_tasks(until)` | Bulk-expands every repeating task through a chosen end date. |
+| `Task.is_recurring()` | `frequency != "none"`. |
+
+Both recurrence paths check `Pet.has_task(title, date_time)` first, so completing
+a task whose next occurrence already exists creates no duplicate, and re-running
+the bulk expansion is safe.
+
+### Supporting pieces
+
+| Method | Behavior |
+|--------|----------|
+| `Task.end_time()` | Start plus `duration_minutes` — what makes overlap detection possible at all. |
+| `Owner.get_all_tasks()`, `Scheduler.pet_for(task)` | The scheduler holds an `Owner` and reads tasks through its pets, so there's one source of truth. |
 
 ## 📸 Demo Walkthrough
 

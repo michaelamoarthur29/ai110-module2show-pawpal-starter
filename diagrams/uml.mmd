@@ -33,6 +33,7 @@ classDiagram
         +mark_incomplete() None
         +end_time() datetime
         +is_recurring() bool
+        +next_occurrence() Task
         +overlaps(other Task) bool
         +priority_rank() int
     }
@@ -42,9 +43,15 @@ classDiagram
         +pets() list~Pet~
         +get_all_tasks() list~Task~
         +pet_for(task Task) Pet
+        +sort_by_time(tasks list) list~Task~
         +get_sorted_tasks() list~Task~
         +get_daily_tasks(day date) list~Task~
+        +filter_by_pet(pet_name str) list~Task~
+        +filter_by_status(completed bool) list~Task~
+        +filter_tasks(pet_name str, completed bool, day date) list~Task~
         +detect_conflicts(day date) list~tuple~
+        +conflict_warnings(day date) list~str~
+        +mark_task_complete(task Task) Task
         +create_recurring_tasks(until date) list~Task~
     }
 

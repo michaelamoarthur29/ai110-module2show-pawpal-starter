@@ -171,7 +171,10 @@ else:
             label_visibility="collapsed",
         )
         if done and not task.completed:
-            task.mark_complete()
+            # Completing a recurring task queues its next occurrence.
+            follow_up = scheduler.mark_task_complete(task)
+            if follow_up is not None:
+                st.toast(f"Next {task.title} scheduled for {follow_up.date_time:%a %d %b}.")
         elif not done and task.completed:
             task.mark_incomplete()
 
