@@ -44,15 +44,71 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Running the demo script exercises the whole logic layer in `pawpal_system.py`:
+
+```bash
+python main.py
+```
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+PawPal+ daily plan
+
+Jordan's pets
+==========================================================
+  Mochi (dog, 3)  -  4 tasks
+  Biscuit (cat, 7)  -  3 tasks
+
+Today's Schedule - Wednesday, September 16
+==========================================================
+  08:00 - Morning walk (30 min) [high, daily]
+      for Mochi - exercise
+  08:45 - Breakfast (10 min) [high]
+      for Mochi - feeding
+  08:50 - Breakfast (10 min) [high]
+      for Biscuit - feeding
+  09:00 - Thyroid meds (5 min) [high, daily]
+      for Biscuit - medication
+  14:00 - Puzzle feeder (20 min) [low]
+      for Mochi - enrichment
+  18:30 - Evening walk (30 min) [medium]
+      for Mochi - exercise
+  19:00 - Brushing (15 min) [medium, weekly]
+      for Biscuit - grooming
+
+All tasks by priority
+==========================================================
+  high    Wed 08:00  Morning walk (Mochi)
+  high    Wed 08:45  Breakfast (Mochi)
+  high    Wed 08:50  Breakfast (Biscuit)
+  high    Wed 09:00  Thyroid meds (Biscuit)
+  medium  Wed 18:30  Evening walk (Mochi)
+  medium  Wed 19:00  Brushing (Biscuit)
+  low     Wed 14:00  Puzzle feeder (Mochi)
+
+Scheduling conflicts
+==========================================================
+  ! Breakfast (Mochi) overlaps Breakfast (Biscuit)
+      08:45-08:55 vs 08:50-09:00
+
+Marking the morning walk complete
+==========================================================
+  08:00 - Morning walk (30 min) [high, daily] ✓
+
+Rolled 2 recurring tasks forward
+==========================================================
+
+Tomorrow's Schedule - Thursday, September 17
+==========================================================
+  08:00 - Morning walk (30 min) [high, daily]
+      for Mochi - exercise
+  09:00 - Thyroid meds (5 min) [high, daily]
+      for Biscuit - medication
 ```
+
+The two 10-minute breakfasts at 08:45 and 08:50 are deliberate — they show
+`detect_conflicts()` catching an overlap across two different pets. Only the
+two `daily` tasks roll into tomorrow; Biscuit's `weekly` brushing is not due
+again until next week.
 
 ## 🧪 Testing PawPal+
 
@@ -67,19 +123,27 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/mikeyamo-arthur/Documents/ai110-module2show-pawpal-starter
+plugins: anyio-4.11.0
+collected 14 items
+
+tests/test_pawpal.py ..............                                      [100%]
+
+============================== 14 passed in 0.03s ==============================
 ```
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.get_sorted_tasks()` | Orders by priority (high → medium → low), then start time |
+| Filtering | `Scheduler.get_daily_tasks(day)` | Keeps only tasks on the requested date, in time order |
+| Conflict handling | `Scheduler.detect_conflicts(day=None)` | Returns pairs of unfinished tasks whose ranges overlap, across all pets; back-to-back tasks don't count |
+| Recurring tasks | `Scheduler.create_recurring_tasks(until)`, `Task.is_recurring()` | Expands `daily` / `weekly` tasks into dated copies through `until`; skips occurrences that already exist so re-running is safe |
+| Task duration | `Task.end_time()` | Start time plus `duration_minutes` — what makes conflict detection possible |
+| Reading pet data | `Owner.get_all_tasks()`, `Scheduler.pet_for(task)` | The scheduler holds an `Owner` and reads tasks through its pets, so there is one source of truth |
 
 ## 📸 Demo Walkthrough
 

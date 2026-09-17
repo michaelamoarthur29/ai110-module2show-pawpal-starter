@@ -1,12 +1,12 @@
 classDiagram
-    %% PawPal+ — class diagram (draft)
-    %% Keep this file updated so it matches your final implementation.
+    %% PawPal+ — matches the implementation in pawpal_system.py
 
     class Owner {
         +str name
         +list~Pet~ pets
-        +add_pet(pet Pet) None
+        +add_pet(pet Pet) Pet
         +get_pets() list~Pet~
+        +get_all_tasks() list~Task~
     }
 
     class Pet {
@@ -14,10 +14,12 @@ classDiagram
         +str species
         +int age
         +list~Task~ tasks
-        +add_task(task Task) None
+        +add_task(task Task) Task
         +get_tasks() list~Task~
+        +has_task(title str, date_time datetime) bool
     }
 
+    %% Task.priority: "high" | "medium" | "low"
     %% Task.frequency: "none" | "daily" | "weekly"
     class Task {
         +str title
@@ -30,18 +32,21 @@ classDiagram
         +mark_complete() None
         +end_time() datetime
         +is_recurring() bool
+        +overlaps(other Task) bool
+        +priority_rank() int
     }
 
     class Scheduler {
-        +list~Pet~ pets
-        +list~Task~ tasks
+        +Owner owner
+        +pets() list~Pet~
+        +get_all_tasks() list~Task~
+        +pet_for(task Task) Pet
         +get_sorted_tasks() list~Task~
         +get_daily_tasks(day date) list~Task~
-        +detect_conflicts() list~tuple~
+        +detect_conflicts(day date) list~tuple~
         +create_recurring_tasks(until date) list~Task~
     }
 
     Owner "1" *-- "0..*" Pet : owns
     Pet "1" *-- "0..*" Task : has
-    Scheduler "1" o-- "0..*" Pet : manages
-    Scheduler "1" o-- "0..*" Task : schedules
+    Scheduler "1" --> "1" Owner : reads tasks through
