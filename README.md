@@ -148,25 +148,82 @@ expansion.
 
 ```bash
 # Run the full test suite:
-pytest
+python -m pytest
 
-# Run with coverage:
-pytest --cov
+# Quieter output:
+python -m pytest -q
+
+# With coverage:
+python -m pytest --cov
 ```
 
-Sample test output:
+A plain `pytest` works too — the root `conftest.py` puts the project directory
+on `sys.path`, so `pawpal_system` imports either way.
+
+### What the tests cover
+
+44 tests in `tests/test_pawpal.py`, grouped around five core behaviors. Each
+has a happy path and the edge cases that actually break schedulers:
+
+| Area | Happy path | Edge cases covered |
+|------|-----------|--------------------|
+| **Task state** | `mark_complete()` flips a task to done; `mark_incomplete()` undoes it; `end_time()` is start + duration | Zero and negative durations rejected; unknown priority and frequency rejected at construction |
+| **Sorting** | `sort_by_time()` returns chronological order regardless of insertion order; `get_sorted_tasks()` orders high → medium → low | Tasks spanning **different days** sort correctly (23:00 today before 06:00 tomorrow — a `"HH:MM"` string sort would get this backwards); identical start times keep insertion order |
+| **Filtering** | Filter by pet, by completion status, by day, and all three combined | Unknown pet name returns `[]` rather than raising; a pet with no tasks; `filter_tasks()` with no arguments returns everything; two pets sharing a name |
+| **Conflicts** | Overlapping ranges are flagged across different pets; `conflict_warnings()` returns strings and never raises | **Identical start times**; back-to-back tasks correctly *not* flagged; completed tasks excluded; a single task alone; an overlap **crossing midnight** |
+| **Recurrence** | Completing a daily task creates tomorrow's copy; weekly jumps 7 days | One-off tasks create nothing; no duplicate when the occurrence already exists; completing the follow-up chains to the day after; month ends (Jan 31 → Feb 1) and leap years (Feb 26 2028 → Mar 4); a task no pet owns |
+| **Empty states** | — | An owner with no pets answers every query with `[]` instead of raising |
+
+### A bug the edge cases caught
+
+Testing an overlap that crosses midnight found a real defect. A 23:50 walk
+running 30 minutes overlaps 00:10 medication, and the global
+`detect_conflicts()` caught it — but the day-scoped `detect_conflicts(day)`
+reported nothing for *either* day, because it only looked at tasks whose
+**start** fell on that date. Since the Streamlit UI calls the day-scoped
+version, a user would never have seen the warning.
+
+The fix was `Scheduler.tasks_touching(day)`, which selects tasks overlapping the
+day's window rather than starting inside it. The conflict is now reported on the
+day the overlap actually happens.
+
+### Sample test run
 
 ```
 ============================= test session starts ==============================
 platform darwin -- Python 3.9.6, pytest-8.4.2, pluggy-1.6.0
 rootdir: /Users/mikeyamo-arthur/Documents/ai110-module2show-pawpal-starter
 plugins: anyio-4.11.0
-collected 31 items
+collected 44 items
 
-tests/test_pawpal.py ...............................                     [100%]
+tests/test_pawpal.py ............................................        [100%]
 
-============================== 31 passed in 0.04s ==============================
+============================== 44 passed in 0.11s ==============================
 ```
+
+### Confidence level
+
+**★★★★☆ (4 / 5)**
+
+Four rather than five. What earns the four: every scheduling algorithm has both
+a happy-path and an edge-case test, the suite runs clean on Python 3.9 and 3.11,
+and it caught a real cross-midnight bug rather than just confirming what the
+code already did. The Streamlit layer was also driven end to end through
+Streamlit's own `AppTest` runtime.
+
+What holds back the fifth star:
+
+- **No timezone or DST handling.** Every `datetime` is naive. On a
+  spring-forward night, "daily" adds 24 hours, not "same wall-clock time
+  tomorrow."
+- **`Pet.has_task()` dedupes on title plus start time only**, so two genuinely
+  different tasks sharing both would be treated as one.
+- **No test at realistic scale.** The suite uses a handful of tasks; the
+  pairwise conflict scan is `O(n²)` in the worst case and has never been run
+  against a year of recurring tasks.
+- **`Owner`, `Pet`, and `Task` have no persistence.** Everything lives in
+  `st.session_state`, so closing the browser tab loses the data. That is a
+  design limit rather than a bug, but it is untested territory.
 
 ## 📐 Smarter Scheduling
 
@@ -184,7 +241,8 @@ tests/test_pawpal.py ...............................                     [100%]
 |--------|----------|
 | `Scheduler.filter_by_pet(pet_name)` | That pet's tasks in time order. An unknown name returns `[]` rather than raising. |
 | `Scheduler.filter_by_status(completed)` | `True` for finished tasks, `False` for outstanding ones. |
-| `Scheduler.get_daily_tasks(day)` | Tasks on one date, in time order. |
+| `Scheduler.get_daily_tasks(day)` | Tasks *starting* on one date, in time order. |
+| `Scheduler.tasks_touching(day)` | Tasks *overlapping* one date — includes a 23:50 task from the night before that is still running. Used by conflict detection so cross-midnight overlaps aren't missed. |
 | `Scheduler.filter_tasks(pet_name=None, completed=None, day=None)` | Combines all three. Any filter left as `None` is ignored, so `filter_tasks()` returns everything. |
 
 ### Conflict detection

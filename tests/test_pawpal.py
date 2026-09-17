@@ -1,4 +1,20 @@
-"""Tests for the PawPal+ logic layer."""
+"""Tests for the PawPal+ logic layer.
+
+Test plan — five core behaviors, each with its happy path and its edges:
+
+1. Task state      mark_complete / mark_incomplete, end_time, validation.
+                   Edge: zero and negative durations, unknown priority.
+2. Sorting         chronological and priority order.
+                   Edge: tasks spanning midnight, ties at identical times.
+3. Filtering       by pet, by completion status, by day, and combined.
+                   Edge: unknown pet name, pet with no tasks, no filters at all.
+4. Conflicts       overlapping ranges across pets, reported not raised.
+                   Edge: identical start times, back-to-back tasks, completed
+                   tasks, a single task alone, an overlap crossing midnight.
+5. Recurrence      completing a daily/weekly task queues the next occurrence.
+                   Edge: one-off tasks, duplicate suppression, repeated
+                   completions, month ends and leap years, an unowned task.
+"""
 
 from datetime import date, datetime, timedelta
 
@@ -379,3 +395,160 @@ def test_next_occurrence_leaves_the_original_untouched():
     assert follow_up.completed is False
     assert follow_up is not task
     assert task.date_time.date() == TODAY
+
+
+# --- edge case: nothing to schedule ----------------------------------------
+
+
+def test_owner_with_no_pets_handles_every_query():
+    """An owner with no pets returns empty results instead of raising."""
+    scheduler = Scheduler(Owner("Nobody"))
+
+    assert scheduler.get_all_tasks() == []
+    assert scheduler.sort_by_time() == []
+    assert scheduler.get_sorted_tasks() == []
+    assert scheduler.get_daily_tasks(TODAY) == []
+    assert scheduler.detect_conflicts() == []
+    assert scheduler.conflict_warnings() == []
+    assert scheduler.create_recurring_tasks(until=TODAY + timedelta(days=7)) == []
+
+
+def test_pet_with_no_tasks_is_not_an_error():
+    """A pet that exists but has no tasks yet filters to an empty list."""
+    owner = Owner("Jordan")
+    owner.add_pet(Pet("Mochi", "dog", 3))
+    scheduler = Scheduler(owner)
+
+    assert scheduler.filter_by_pet("Mochi") == []
+    assert scheduler.filter_by_status(completed=False) == []
+    assert scheduler.detect_conflicts() == []
+
+
+def test_a_single_task_cannot_conflict_with_itself():
+    """One task on the calendar produces no conflicts."""
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    pet.add_task(make_task("Walk", hour=8, duration=30))
+
+    assert Scheduler(owner).detect_conflicts() == []
+
+
+# --- edge case: time boundaries --------------------------------------------
+
+
+def test_conflict_crossing_midnight_is_reported_on_the_day_it_happens():
+    """A task running past midnight still conflicts with one early the next day.
+
+    The 23:50 walk ends at 00:20, so it overlaps 00:10 meds. The overlap itself
+    falls on the 17th, so that is the day the warning belongs to — checking the
+    16th reports nothing, because nothing collides before midnight.
+    """
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    pet.add_task(make_task("Late walk", hour=23, minute=50, duration=30))
+    early = make_task("Early meds", hour=0, minute=10, duration=10)
+    early.date_time += timedelta(days=1)
+    pet.add_task(early)
+    scheduler = Scheduler(owner)
+
+    assert len(scheduler.detect_conflicts()) == 1
+    assert len(scheduler.detect_conflicts(TODAY + timedelta(days=1))) == 1
+    assert scheduler.detect_conflicts(TODAY) == []
+
+
+def test_tasks_touching_keeps_a_task_that_runs_into_the_day():
+    """tasks_touching() includes a task that starts the night before and spills over."""
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    pet.add_task(make_task("Late walk", hour=23, minute=50, duration=30))
+    scheduler = Scheduler(owner)
+    tomorrow = TODAY + timedelta(days=1)
+
+    # It starts today, so the day listing shows it today, not tomorrow...
+    assert [t.title for t in scheduler.get_daily_tasks(tomorrow)] == []
+    # ...but it is still running tomorrow, so conflict checks must see it.
+    assert [t.title for t in scheduler.tasks_touching(tomorrow)] == ["Late walk"]
+
+
+def test_equal_start_times_keep_their_insertion_order():
+    """Tasks at the identical time stay in the order they were added (stable sort)."""
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    pet.add_task(make_task("First added", hour=8))
+    pet.add_task(make_task("Second added", hour=8))
+
+    order = [t.title for t in Scheduler(owner).sort_by_time()]
+
+    assert order == ["First added", "Second added"]
+
+
+def test_daily_recurrence_crosses_a_month_end():
+    """timedelta handles month boundaries: Jan 31 + 1 day is Feb 1."""
+    task = Task("Walk", "exercise", datetime(2026, 1, 31, 8, 0), 30, frequency="daily")
+
+    assert task.next_occurrence().date_time == datetime(2026, 2, 1, 8, 0)
+
+
+def test_weekly_recurrence_crosses_a_leap_day():
+    """A weekly task spanning Feb 29 in a leap year lands on the right date."""
+    task = Task("Brushing", "grooming", datetime(2028, 2, 26, 19, 0), 15, frequency="weekly")
+
+    assert task.next_occurrence().date_time == datetime(2028, 3, 4, 19, 0)
+
+
+# --- edge case: recurrence limits ------------------------------------------
+
+
+def test_recurring_expansion_with_a_past_end_date_creates_nothing():
+    """Asking to expand through a date already gone produces no tasks."""
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    pet.add_task(make_task("Walk", hour=8, frequency="daily"))
+
+    assert Scheduler(owner).create_recurring_tasks(until=TODAY - timedelta(days=5)) == []
+
+
+def test_completing_the_follow_up_chains_to_the_day_after():
+    """Completing an auto-created occurrence queues the one after it."""
+    owner = Owner("Jordan")
+    pet = owner.add_pet(Pet("Mochi", "dog", 3))
+    walk = pet.add_task(make_task("Walk", hour=8, frequency="daily"))
+    scheduler = Scheduler(owner)
+
+    second = scheduler.mark_task_complete(walk)
+    third = scheduler.mark_task_complete(second)
+
+    assert second.date_time.date() == TODAY + timedelta(days=1)
+    assert third.date_time.date() == TODAY + timedelta(days=2)
+    assert len(pet.get_tasks()) == 3
+
+
+def test_completing_a_task_no_pet_owns_still_marks_it_done():
+    """A task not attached to a pet completes, but has nowhere to queue a follow-up."""
+    owner = Owner("Jordan")
+    owner.add_pet(Pet("Mochi", "dog", 3))
+    orphan = make_task("Orphan", hour=8, frequency="daily")
+
+    follow_up = Scheduler(owner).mark_task_complete(orphan)
+
+    assert orphan.completed is True
+    assert follow_up is None
+
+
+def test_filter_by_pet_covers_two_pets_sharing_a_name():
+    """If two pets share a name, filtering by it returns both of their tasks."""
+    owner = Owner("Jordan")
+    dog = owner.add_pet(Pet("Rex", "dog", 2))
+    cat = owner.add_pet(Pet("Rex", "cat", 4))
+    dog.add_task(make_task("Dog walk", hour=8))
+    cat.add_task(make_task("Cat meds", hour=12))
+
+    titles = [t.title for t in Scheduler(owner).filter_by_pet("Rex")]
+
+    assert titles == ["Dog walk", "Cat meds"]
+
+
+def test_negative_duration_is_rejected():
+    """A negative duration would make end_time() precede the start."""
+    with pytest.raises(ValueError):
+        make_task(duration=-10)

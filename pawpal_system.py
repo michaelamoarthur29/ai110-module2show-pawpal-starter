@@ -7,7 +7,7 @@ Scheduler. Mirrors diagrams/uml.mmd.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 # Task.frequency values
 FREQUENCIES = ("none", "daily", "weekly")
@@ -215,6 +215,23 @@ class Scheduler:
 
     # --- conflicts ---
 
+    def tasks_touching(self, day: date) -> list[Task]:
+        """Return tasks overlapping the given day, including ones running into it.
+
+        Unlike get_daily_tasks(), this keeps a task that starts at 23:50 the
+        night before, because it is still running during `day` and can still
+        collide with something scheduled on it.
+        """
+        window_start = datetime.combine(day, time.min)
+        window_end = window_start + timedelta(days=1)
+        return self.sort_by_time(
+            [
+                task
+                for task in self.get_all_tasks()
+                if task.date_time < window_end and task.end_time() > window_start
+            ]
+        )
+
     def detect_conflicts(self, day: date | None = None) -> list[tuple[Task, Task]]:
         """Return pairs of unfinished tasks whose time ranges overlap.
 
@@ -222,7 +239,7 @@ class Scheduler:
         task starts after the current one ends — everything later starts later
         still, so it can't overlap either.
         """
-        tasks = self.get_daily_tasks(day) if day else self.get_all_tasks()
+        tasks = self.tasks_touching(day) if day else self.get_all_tasks()
         pending = self.sort_by_time([t for t in tasks if not t.completed])
 
         conflicts: list[tuple[Task, Task]] = []
